@@ -15,6 +15,7 @@ args.description = 'Download and convert a whole webtoon series to epub.'
 args.add_argument('link', help='Link to webtoon comic to download. (This should be the link to chapter list.)', type=str)
 args.add_argument('--clean-up', help='Clean up the downloaded images after they are put in the epub.', type=bool, default=True, action=argparse.BooleanOptionalAction)
 args.add_argument('--auto-crop', help='Automatically crop the images. (Read more about this in the README on the GitHub.)', type=bool, default=True, action=argparse.BooleanOptionalAction)
+args.add_argument('--save-combined-image', help='Save the combined vertical image of each chapter to a file.', type=bool, default=False, action=argparse.BooleanOptionalAction)
 args.add_argument('--split-into-parts', help='Split the comic into parts.', type=bool, default=False, action=argparse.BooleanOptionalAction)
 args.add_argument('--chapters-per-part', help='Chapters per part. (Default: 100)', type=int, default=100)
 args.add_argument('--proxy', help='Proxy to use', type=str, default="")
@@ -221,6 +222,53 @@ def crop_vertical_sections(image, output_folder, min_height=30, quality=90, back
 def getNumericIndex(filename:str):
     return int(filename.split('.')[0])
 
+def process_chapter_images(title, chapter_index, chapter_title, auto_crop, save_combined_image):
+    safe_title = make_safe_filename_windows(title)
+    chapter_dir = f'data/{safe_title}/{chapter_index}'
+
+    if not os.path.exists(chapter_dir):
+        return
+
+    # If auto_crop is False and save_combined_image is False, we do nothing here.
+    if not auto_crop and not save_combined_image:
+        return
+
+    images = []
+    # Use getNumericIndex for sorting
+    # We filter for files that start with a digit just in case
+    try:
+        imgs = sorted([f for f in os.listdir(chapter_dir) if f.split('.')[0].isdigit()], key=getNumericIndex)
+    except ValueError:
+        # Fallback if getNumericIndex fails for some reason
+        imgs = sorted(os.listdir(chapter_dir))
+
+    for img in imgs:
+        images.append(os.path.join(chapter_dir, img))
+
+    if not images:
+        return
+
+    if auto_crop:
+        print(f'Auto cropping chapter {chapter_index}: {chapter_title}...', end='', flush=True)
+
+    # Combine images
+    combined_image = combine_images_vertically(images)
+
+    # Save combined image if requested
+    if save_combined_image:
+        combined_dir = f'{safe_title}_combined'
+        os.makedirs(combined_dir, exist_ok=True)
+        cv2.imwrite(os.path.join(combined_dir, f'Chapter {chapter_index}.jpg'), combined_image)
+
+    if auto_crop:
+        # Remove all images in the chapter folder
+        for img in os.listdir(chapter_dir):
+            os.remove(os.path.join(chapter_dir, img))
+
+        # Crop and save sections
+        crop_vertical_sections(combined_image, chapter_dir)
+        print('done')
+
 def downloadChapter(link, title, chapterid):
     html = requests.get(link, proxies=proxies, timeout=5).text
     soup = BeautifulSoup(html, 'html.parser')
@@ -327,17 +375,7 @@ def downloadComic(link):
         print(f'Downloading chapter {chapter_index}: {chapter[0]}')
         downloadChapter(chapter[1], title, chapter_index)
         
-        if args.auto_crop:
-            print(f'Auto cropping chapter {chapter_index}: {chapter[0]}...', end='', flush=True)
-            images = []
-            for img in sorted(os.listdir(f'data/{make_safe_filename_windows(title)}/{chapter_index}'), key=getNumericIndex):
-                images.append(f'data/{make_safe_filename_windows(title)}/{chapter_index}/{img}')
-            image = combine_images_vertically(images)
-            # Remove all images in the chapter folder
-            for img in os.listdir(f'data/{make_safe_filename_windows(title)}/{chapter_index}'):
-                os.remove(f'data/{make_safe_filename_windows(title)}/{chapter_index}/{img}')
-            crop_vertical_sections(image, f'data/{make_safe_filename_windows(title)}/{chapter_index}') # Crop the image and save the sections
-            print('done')
+        process_chapter_images(title, chapter_index, chapter[0], args.auto_crop, args.save_combined_image)
 
         book_chapter = epub.EpubHtml(title=chapter[0], file_name=f'chapter{chapter_index}.xhtml')
         book_chapter.content = '<body style="margin: 0;">'
