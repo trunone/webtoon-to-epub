@@ -256,13 +256,13 @@ def process_chapter_images(title, chapter_index, chapter_title, auto_crop, save_
 
     # Save combined image if requested
     if save_combined_image:
-        combined_dir = f'{safe_title}_combined'
-        os.makedirs(combined_dir, exist_ok=True)
-        cv2.imwrite(os.path.join(combined_dir, f'Chapter {chapter_index}.jpg'), combined_image)
+        cv2.imwrite(os.path.join(chapter_dir, 'combined.jpg'), combined_image)
 
     if auto_crop:
         # Remove all images in the chapter folder
         for img in os.listdir(chapter_dir):
+            if save_combined_image and img == 'combined.jpg':
+                continue
             os.remove(os.path.join(chapter_dir, img))
 
         # Crop and save sections
@@ -380,7 +380,7 @@ def downloadComic(link):
         book_chapter = epub.EpubHtml(title=chapter[0], file_name=f'chapter{chapter_index}.xhtml')
         book_chapter.content = '<body style="margin: 0;">'
 
-        imgs = sorted(os.listdir(f'data/{make_safe_filename_windows(title)}/{chapter_index}'), key=getNumericIndex)
+        imgs = sorted([f for f in os.listdir(f'data/{make_safe_filename_windows(title)}/{chapter_index}') if f.split('.')[0].isdigit()], key=getNumericIndex)
         for img in imgs:
             print(f'\rAdding image {getNumericIndex(img)}/{len(imgs)} to comic', end='')
             f = open(f'data/{make_safe_filename_windows(title)}/{chapter_index}/{img}', 'rb')
