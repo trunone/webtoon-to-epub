@@ -10,21 +10,8 @@ import numpy as np
 import argparse
 import threading
 
-args = argparse.ArgumentParser()
-args.description = 'Download and convert a whole webtoon series to epub.'
-args.add_argument('link', help='Link to webtoon comic to download. (This should be the link to chapter list.)', type=str)
-args.add_argument('--clean-up', help='Clean up the downloaded images after they are put in the epub.', type=bool, default=True, action=argparse.BooleanOptionalAction)
-args.add_argument('--auto-crop', help='Automatically crop the images. (Read more about this in the README on the GitHub.)', type=bool, default=True, action=argparse.BooleanOptionalAction)
-args.add_argument('--save-combined-image', help='Save the combined vertical image of each chapter to a file.', type=bool, default=False, action=argparse.BooleanOptionalAction)
-args.add_argument('--split-into-parts', help='Split the comic into parts.', type=bool, default=False, action=argparse.BooleanOptionalAction)
-args.add_argument('--chapters-per-part', help='Chapters per part. (Default: 100)', type=int, default=100)
-args.add_argument('--proxy', help='Proxy to use', type=str, default="")
-args.add_argument('--threads', help='How many threads to use when downloading. (Default: 10)', type=int, default=10)
-args = args.parse_args()
-
+args = None
 proxies = {}
-if args.proxy:
-    proxies = {'http': args.proxy, 'https': args.proxy}
 
 chapter_page_count_total = 0
 
@@ -154,11 +141,14 @@ def save_split_if_needed(image, output_folder, _section_index, max_height_limit,
     return _section_index
 
 def crop_vertical_sections(image, output_folder, min_height=30, quality=90, background='white', _section_index=0, _recursion_depth=0):
-    # Resize image if it's wider than the Kobo Libra Colour screen width (1264px)
-    if image.shape[1] > 1264:
+    # Resize image if it's not the Kobo Libra Colour screen width (1264px)
+    if image.shape[1] != 1264:
         new_width = 1264
         new_height = int(image.shape[0] * (1264 / image.shape[1]))
-        image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+        if image.shape[1] > 1264:
+            image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+        else:
+            image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
 
     height, width, _ = image.shape
 
@@ -448,6 +438,21 @@ def downloadComic(link):
     print('\n') # Add 2 empty lines at the end of a book
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.description = 'Download and convert a whole webtoon series to epub.'
+    parser.add_argument('link', help='Link to webtoon comic to download. (This should be the link to chapter list.)', type=str)
+    parser.add_argument('--clean-up', help='Clean up the downloaded images after they are put in the epub.', type=bool, default=True, action=argparse.BooleanOptionalAction)
+    parser.add_argument('--auto-crop', help='Automatically crop the images. (Read more about this in the README on the GitHub.)', type=bool, default=True, action=argparse.BooleanOptionalAction)
+    parser.add_argument('--save-combined-image', help='Save the combined vertical image of each chapter to a file.', type=bool, default=False, action=argparse.BooleanOptionalAction)
+    parser.add_argument('--split-into-parts', help='Split the comic into parts.', type=bool, default=False, action=argparse.BooleanOptionalAction)
+    parser.add_argument('--chapters-per-part', help='Chapters per part. (Default: 100)', type=int, default=100)
+    parser.add_argument('--proxy', help='Proxy to use', type=str, default="")
+    parser.add_argument('--threads', help='How many threads to use when downloading. (Default: 10)', type=int, default=10)
+    args = parser.parse_args()
+
+    if args.proxy:
+        proxies = {'http': args.proxy, 'https': args.proxy}
+
     for link in args.link.split(','):
         def f():
             global chapter_page_count_total
