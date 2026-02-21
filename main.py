@@ -153,6 +153,12 @@ def save_split_if_needed(image, output_folder, _section_index, max_height_limit,
     return _section_index
 
 def crop_vertical_sections(image, output_folder, min_height=30, quality=90, background='white', _section_index=0, _recursion_depth=0):
+    # Resize image if it's wider than the Kobo Libra Colour screen width (1264px)
+    if image.shape[1] > 1264:
+        new_width = 1264
+        new_height = int(image.shape[0] * (1264 / image.shape[1]))
+        image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+
     height, width, _ = image.shape
 
     # Calculate max height based on Kobo Libra Colour screen (1264x1680)
