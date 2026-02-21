@@ -256,12 +256,14 @@ def process_chapter_images(title, chapter_index, chapter_title, auto_crop, save_
 
     # Save combined image if requested
     if save_combined_image:
-        cv2.imwrite(os.path.join(chapter_dir, 'combined.jpg'), combined_image)
+        if not cv2.imwrite(os.path.join(chapter_dir, 'combined.jpg'), combined_image):
+            # If saving as JPG fails (likely due to image height > 65535), try saving as PNG
+            cv2.imwrite(os.path.join(chapter_dir, 'combined.png'), combined_image)
 
     if auto_crop:
         # Remove all images in the chapter folder
         for img in os.listdir(chapter_dir):
-            if save_combined_image and img == 'combined.jpg':
+            if save_combined_image and (img == 'combined.jpg' or img == 'combined.png'):
                 continue
             os.remove(os.path.join(chapter_dir, img))
 
