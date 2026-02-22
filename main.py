@@ -130,8 +130,41 @@ def has_significant_content(section, background):
     else:
         return has_significant_white_content(section)
 
+def save_split_if_needed(image, output_folder, _section_index, max_height_limit, quality=90):
+    if image.shape[0] <= max_height_limit:
+        _section_index += 1
+        output_path = os.path.join(output_folder, f"{_section_index}.jpg")
+        cv2.imwrite(output_path, image, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    else:
+        # Force split
+        current_y = 0
+        overlap = 50
+        if max_height_limit <= overlap:
+            overlap = 0
+        while current_y < image.shape[0]:
+            _section_index += 1
+            chunk_h = min(max_height_limit, image.shape[0] - current_y)
+            sub_crop = image[current_y:current_y+chunk_h, :]
+            output_path = os.path.join(output_folder, f"{_section_index}.jpg")
+            cv2.imwrite(output_path, sub_crop, [cv2.IMWRITE_JPEG_QUALITY, quality])
+            if current_y + chunk_h >= image.shape[0]:
+                break
+            current_y += (chunk_h - overlap)
+    return _section_index
+
 def crop_vertical_sections(image, output_folder, min_height=30, quality=90, background='white', _section_index=0, _recursion_depth=0):
+    # Resize image if it's wider than the Kobo Libra Colour screen width (1264px)
+    if image.shape[1] > 1264:
+        new_width = 1264
+        new_height = int(image.shape[0] * (1264 / image.shape[1]))
+        image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+
     height, width, _ = image.shape
+
+    # Calculate max height based on Kobo Libra Colour screen (1264x1680)
+    # We maintain aspect ratio. max_height = width * (1680 / 1264)
+    target_aspect_ratio = 1680 / 1264
+    max_height_limit = int(width * target_aspect_ratio)
 
     # Convert image to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -169,23 +202,19 @@ def crop_vertical_sections(image, output_folder, min_height=30, quality=90, back
         cropped = image[start_y:end_y, :] # Crop full width
         if not has_significant_content(cropped, background): # Skip saving images if they don't have any significant content
             continue
-        if cropped.shape[0] > 3000 and _recursion_depth < 1:
+        if cropped.shape[0] > max_height_limit and _recursion_depth < 1:
             _section_index = crop_vertical_sections(cropped, output_folder, min_height, quality, 'black', int(_section_index), _recursion_depth + 1) # Attempt to recrop big images with a black background instead
         else:
-            _section_index += 1
-            output_path = os.path.join(output_folder, f"{_section_index}.jpg")
-            cv2.imwrite(output_path, cropped, [cv2.IMWRITE_JPEG_QUALITY, quality])
+            _section_index = save_split_if_needed(cropped, output_folder, _section_index, max_height_limit, quality)
 
     if last_end_y < height: # Save any remaining content as a separate image
         cropped = image[last_end_y:, :] # Crop full width
         if not has_significant_content(cropped, background): # Skip saving images if they don't have any significant content
             return _section_index
-        if cropped.shape[0] > 3000 and _recursion_depth < 1:
+        if cropped.shape[0] > max_height_limit and _recursion_depth < 1:
             _section_index = crop_vertical_sections(cropped, output_folder, min_height, quality, 'black', int(_section_index), _recursion_depth + 1) # Attempt to recrop big images with a black background instead
         else:
-            _section_index += 1
-            output_path = os.path.join(output_folder, f"{_section_index}.jpg")
-            cv2.imwrite(output_path, cropped, [cv2.IMWRITE_JPEG_QUALITY, quality])
+            _section_index = save_split_if_needed(cropped, output_folder, _section_index, max_height_limit, quality)
 
     return _section_index
 
@@ -378,16 +407,17 @@ def downloadComic(link):
     
     print('\n') # Add 2 empty lines at the end of a book
 
-for link in args.link.split(','):
-    def f():
-        global chapter_page_count_total
-        chapter_page_count_total = 0
-        try:
-            downloadComic(re.sub(r'&page=.*', '', link))
-        except Exception as e:
-            print('Failed to download comic.')
-            print(e)
-            print('Retrying in 5 seconds...')
-            time.sleep(5)
-            f()
-    f()
+if __name__ == '__main__':
+    for link in args.link.split(','):
+        def f():
+            global chapter_page_count_total
+            chapter_page_count_total = 0
+            try:
+                downloadComic(re.sub(r'&page=.*', '', link))
+            except Exception as e:
+                print('Failed to download comic.')
+                print(e)
+                print('Retrying in 5 seconds...')
+                time.sleep(5)
+                f()
+        f()
